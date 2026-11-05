@@ -111,7 +111,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 15f
-            singleLine = true
+            setSingleLine(true)
             setPadding(14, 4, 14, 4)
             background = rounded(panel, 24f)
         }
