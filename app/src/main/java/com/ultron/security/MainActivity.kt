@@ -70,7 +70,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
  val found=mutableListOf<String>()
  try{val list=if(Build.VERSION.SDK_INT>=33)packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())) else {
  @Suppress("DEPRECATION") packageManager.getInstalledPackages(PackageManager.GET_PERMISSIONS)}
- for(p in list){val a=p.applicationInfo?:continue;if(a.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM!=0)continue
+ for(p in list){val a=p.applicationInfo?:continue;if((a.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0)continue
  val perms=(p.requestedPermissions?: emptyArray()).filter{map.containsKey(it)}.mapNotNull{map[it]}.distinct()
  if(perms.isNotEmpty())found.add(packageManager.getApplicationLabel(a).toString()+" — "+perms.joinToString(", "))}}
  catch(_:Exception){found.add("Could not read installed apps on this device.")}
