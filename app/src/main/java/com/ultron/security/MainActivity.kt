@@ -1,320 +1,92 @@
 package com.ultron.security
 
 import android.Manifest
-import android.app.Activity
-import android.content.Intent
+import android.app.*
+import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Canvas
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
-import android.content.Context
 import android.widget.*
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Locale
-import kotlin.concurrent.thread
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
-    private val bg = Color.rgb(5, 10, 22)
-    private val panel = Color.rgb(13, 23, 43)
-    private val cyan = Color.rgb(0, 220, 255)
-    private lateinit var messages: LinearLayout
-    private lateinit var input: EditText
-    private lateinit var status: TextView
-    private lateinit var tts: TextToSpeech
-    private var speech: SpeechRecognizer? = null
-    private var listening = false
-    private val prefs by lazy { getSharedPreferences("ultron_settings", MODE_PRIVATE) }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        window.statusBarColor = bg
-        window.navigationBarColor = bg
-        tts = TextToSpeech(this, this)
-        showHome()
-    }
-
-    override fun onInit(result: Int) {
-        if (result == TextToSpeech.SUCCESS) tts.language = Locale.getDefault()
-    }
-
-    private fun rounded(color: Int, radius: Float = 18f): GradientDrawable =
-        GradientDrawable().apply { setColor(color); cornerRadius = radius }
-
-    private fun label(text: String, size: Float, color: Int = Color.WHITE, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = size
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
-
-    private fun showHome() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(22, 22, 22, 16)
-            setBackgroundColor(bg)
-        }
-        val top = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            orientation = LinearLayout.HORIZONTAL
-        }
-        top.addView(label("ULTRON", 25f, cyan, true), LinearLayout.LayoutParams(0, -2, 1f))
-        val settings = Button(this).apply {
-            text = "SETTINGS"
-            textSize = 11f
-            setTextColor(cyan)
-            setBackgroundColor(Color.TRANSPARENT)
-            setOnClickListener { settingsDialog() }
-        }
-        top.addView(settings)
-        root.addView(top)
-        root.addView(label("PERSONAL AI • ANDROID EDITION", 10f, Color.LTGRAY))
-        val orb = OrbView(this)
-        root.addView(orb, LinearLayout.LayoutParams(-1, 210).apply { topMargin = 10; bottomMargin = 4 })
-        status = label("SYSTEM ONLINE  •  READY", 12f, cyan, true).apply { gravity = Gravity.CENTER }
-        root.addView(status)
-        root.addView(label("How can I help you?", 21f, Color.WHITE, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 14, 0, 14)
-        })
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            background = rounded(panel, 18f)
-            setPadding(12, 12, 12, 12)
-        }
-        messages = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(messages)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        addMessage("ULTRON", "Hello. I am online. Add your Gemini API key in Settings to enable AI replies.")
-        val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 12, 0, 0)
-        }
-        input = EditText(this).apply {
-            hint = "Message ULTRON..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            setSingleLine(true)
-            setPadding(14, 4, 14, 4)
-            background = rounded(panel, 24f)
-        }
-        controls.addView(input, LinearLayout.LayoutParams(0, 52, 1f))
-        val mic = Button(this).apply {
-            text = "🎙"
-            textSize = 18f
-            setTextColor(cyan)
-            setBackgroundColor(Color.TRANSPARENT)
-            setOnClickListener { startVoiceInput() }
-        }
-        controls.addView(mic)
-        val send = Button(this).apply {
-            text = "SEND"
-            setTextColor(bg)
-            textSize = 12f
-            setBackground(rounded(cyan, 22f))
-            setOnClickListener { sendMessage() }
-        }
-        controls.addView(send, LinearLayout.LayoutParams(-2, 48))
-        root.addView(controls)
-        setContentView(root)
-    }
-
-    private fun addMessage(who: String, text: String) {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = rounded(if (who == "YOU") Color.rgb(18, 48, 68) else Color.rgb(20, 32, 54), 14f)
-            setPadding(14, 10, 14, 10)
-        }
-        card.addView(label(who, 10f, if (who == "YOU") cyan else Color.rgb(100, 230, 255), true))
-        card.addView(label(text, 14f, Color.WHITE).apply { setPadding(0, 4, 0, 0) })
-        val lp = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 9 }
-        messages.addView(card, lp)
-    }
-
-    private fun sendMessage() {
-        val prompt = input.text.toString().trim()
-        if (prompt.isEmpty()) return
-        input.setText("")
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-            .hideSoftInputFromWindow(input.windowToken, 0)
-        addMessage("YOU", prompt)
-        val key = prefs.getString("gemini_key", "") ?: ""
-        if (key.isBlank()) {
-            addMessage("ULTRON", "AI is not configured yet. Open Settings and add your Gemini API key.")
-            status.text = "WAITING FOR API CONFIGURATION"
-            return
-        }
-        status.text = "THINKING..."
-        thread {
-            val answer = try {
-                val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$key")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
-                }
-                val body = JSONObject().put("contents", JSONArray().put(
-                    JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-                )).toString()
-                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
-                val response = stream.bufferedReader().use { it.readText() }
-                conn.disconnect()
-                val json = JSONObject(response)
-                if (json.has("candidates")) json.getJSONArray("candidates")
-                    .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
-                    .getJSONObject(0).optString("text", "I could not read that response.")
-                else "AI request failed. Check your API key and internet connection."
-            } catch (e: Exception) {
-                "I couldn't connect. Check your internet and API key, then try again."
-            }
-            runOnUiThread {
-                addMessage("ULTRON", answer)
-                status.text = "SYSTEM ONLINE  •  READY"
-                if (prefs.getBoolean("voice_reply", true)) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "ultron_reply")
-            }
-        }
-    }
-
-    private fun settingsDialog() {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20, 8, 20, 4)
-        }
-        box.addView(label("Gemini API key", 14f, Color.BLACK, true))
-        val keyInput = EditText(this).apply {
-            hint = "Paste your own API key"
-            setText(prefs.getString("gemini_key", ""))
-            inputType = 129
-        }
-        box.addView(keyInput)
-        val voice = CheckBox(this).apply {
-            text = "Speak AI replies"
-            isChecked = prefs.getBoolean("voice_reply", true)
-        }
-        box.addView(voice)
-        AlertDialogBuilder(this).show(box, {
-            prefs.edit().putString("gemini_key", keyInput.text.toString().trim())
-                .putBoolean("voice_reply", voice.isChecked).apply()
-            Toast.makeText(this, "Settings saved on this device.", Toast.LENGTH_SHORT).show()
-        })
-    }
-
-    private fun startVoiceInput() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, "Speech recognition is unavailable on this device.", Toast.LENGTH_LONG).show()
-            return
-        }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
-            return
-        }
-        speech?.destroy()
-        speech = SpeechRecognizer.createSpeechRecognizer(this)
-        speech?.setRecognitionListener(object : android.speech.RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { status.text = "LISTENING..." }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { status.text = "PROCESSING VOICE..." }
-            override fun onError(error: Int) { status.text = "SYSTEM ONLINE  •  READY" }
-            override fun onResults(results: Bundle?) {
-                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                if (!spoken.isNullOrBlank()) {
-                    input.setText(spoken)
-                    sendMessage()
-                } else status.text = "SYSTEM ONLINE  •  READY"
-            }
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to ULTRON")
-        }
-        speech?.startListening(intent)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 41 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startVoiceInput()
-    }
-
-    override fun onDestroy() {
-        speech?.destroy()
-        tts.stop()
-        tts.shutdown()
-        super.onDestroy()
-    }
-
-    private class OrbView(context: Context) : View(context) {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private var phase = 0f
-        init {
-            setLayerType(LAYER_TYPE_SOFTWARE, null)
-            post(object : Runnable {
-                override fun run() {
-                    phase += 0.035f
-                    invalidate()
-                    postDelayed(this, 40)
-                }
-            })
-        }
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val cx = width / 2f
-            val cy = height / 2f
-            val radius = 66f + kotlin.math.sin(phase.toDouble()).toFloat() * 4f
-            paint.shader = RadialGradient(cx, cy, radius * 1.7f,
-                intArrayOf(Color.argb(90, 0, 220, 255), Color.argb(25, 0, 100, 255), Color.TRANSPARENT),
-                null, Shader.TileMode.CLAMP)
-            canvas.drawCircle(cx, cy, radius * 1.7f, paint)
-            paint.shader = RadialGradient(cx - 20, cy - 22, radius,
-                intArrayOf(Color.WHITE, Color.rgb(0, 210, 255), Color.rgb(0, 35, 90)),
-                null, Shader.TileMode.CLAMP)
-            canvas.drawCircle(cx, cy, radius, paint)
-            paint.shader = null
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2f
-            paint.color = Color.argb(190, 0, 220, 255)
-            canvas.drawCircle(cx, cy, radius + 12f + kotlin.math.sin(phase.toDouble() * 1.3).toFloat() * 3f, paint)
-            paint.style = Paint.Style.FILL
-            paint.textAlign = Paint.Align.CENTER
-            paint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            paint.textSize = 13f
-            paint.color = Color.WHITE
-            canvas.drawText("U", cx, cy + 5f, paint)
-        }
-    }
-
-    private class AlertDialogBuilder(private val activity: Activity) {
-        fun show(view: View, save: () -> Unit) {
-            android.app.AlertDialog.Builder(activity)
-                .setTitle("ULTRON SETTINGS")
-                .setView(view)
-                .setPositiveButton("SAVE") { _, _ -> save() }
-                .setNegativeButton("CANCEL", null)
-                .show()
-        }
-    }
+ private val bg=Color.rgb(4,9,20); private val cyan=Color.rgb(0,220,255); private val panel=Color.rgb(12,24,43)
+ private lateinit var console:LinearLayout; private lateinit var input:EditText; private lateinit var status:TextView
+ private lateinit var tts:TextToSpeech; private var speech:SpeechRecognizer?=null
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);window.statusBarColor=bg;window.navigationBarColor=bg;tts=TextToSpeech(this,this)
+ if(Build.VERSION.SDK_INT>=26)getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(SecurityReceiver.CHANNEL_ID,"JARVIS security alerts",NotificationManager.IMPORTANCE_HIGH))
+ if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),70)
+ home()}
+ override fun onInit(r:Int){if(r==TextToSpeech.SUCCESS)tts.language=Locale.getDefault()}
+ private fun shape(c:Int)=GradientDrawable().apply{setColor(c);cornerRadius=18f}
+ private fun text(s:String,n:Float,c:Int=Color.WHITE,b:Boolean=false)=TextView(this).apply{text=s;textSize=n;setTextColor(c);if(b)setTypeface(typeface,Typeface.BOLD)}
+ private fun home(){
+  val root=LinearLayout(this).apply{orientation=1;setPadding(18,18,18,12);setBackgroundColor(bg)}
+  val top=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
+  top.addView(text("J.A.R.V.I.S.",26f,cyan,true),LinearLayout.LayoutParams(0,-2,1f))
+  top.addView(Button(this).apply{text="SETTINGS";setTextColor(cyan);setBackgroundColor(Color.TRANSPARENT);setOnClickListener{settings()}})
+  root.addView(top);root.addView(text("PERSONAL DEVICE SECURITY SYSTEM",10f,Color.LTGRAY))
+  root.addView(text("◉",70f,cyan,true).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,105))
+  status=text("SYSTEM READY • OFFLINE MODE",12f,cyan,true).apply{gravity=Gravity.CENTER;setPadding(0,0,0,10)};root.addView(status)
+  val sc=ScrollView(this);val body=LinearLayout(this).apply{orientation=1}
+  body.addView(card("APP SECURITY SCAN","Review installed apps for sensitive permissions. This is not a malware verdict.","SCAN APPS"){scan()})
+  body.addView(card("NEW APP WATCH","JARVIS can alert after an app is installed. Android does not allow ordinary apps to block the installer beforehand.","NOTIFICATION SETTINGS"){startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,packageName))})
+  body.addView(card("EMERGENCY SOS","Open the dialer and confirm the emergency call yourself.","OPEN DIALER"){startActivity(Intent(Intent.ACTION_DIAL,Uri.parse("tel:112")))})
+  body.addView(card("VOICE ASSISTANT","Use basic offline commands. No API key required.","TALK TO JARVIS"){voice()})
+  body.addView(text("JARVIS CONSOLE",15f,cyan,true).apply{setPadding(0,12,0,5)})
+  console=LinearLayout(this).apply{orientation=1;background=shape(panel);setPadding(12,12,12,12)}
+  console.addView(text("JARVIS: Online. I can review app permissions and open emergency tools. I cannot guarantee detection of every threat.",13f));body.addView(console)
+  val row=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
+  input=EditText(this).apply{hint="Ask JARVIS...";setHintTextColor(Color.GRAY);setTextColor(Color.WHITE);setSingleLine(true);background=shape(panel)}
+  row.addView(input,LinearLayout.LayoutParams(0,50,1f));row.addView(Button(this).apply{text="SEND";setTextColor(bg);background=shape(cyan);setOnClickListener{reply()}})
+  body.addView(row);sc.addView(body);root.addView(sc,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
+ }
+ private fun card(t:String,d:String,b:String,fn:()->Unit):View{val l=LinearLayout(this).apply{orientation=1;background=shape(panel);setPadding(14,12,14,12)}
+ l.addView(text(t,17f,cyan,true));l.addView(text(d,12f,Color.LTGRAY).apply{setPadding(0,5,0,8)})
+ l.addView(Button(this).apply{text=b;setTextColor(bg);background=shape(cyan);setOnClickListener{fn()}});return l}
+ private fun line(w:String,s:String){console.addView(text("$w: $s",13f).apply{setPadding(0,5,0,5)})}
+ private fun reply(){val q=input.text.toString().trim().lowercase(Locale.ROOT);if(q.isEmpty())return;input.setText("")
+ (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken,0);line("YOU",q)
+ val a=when{ "scan" in q->{scan();"Starting the app permission review."};"sos" in q||"emergency" in q->"Use the SOS card to open the dialer and confirm the call."
+ "unknown app" in q||"new app" in q->"I can alert after installation, but cannot block Android's installer."
+ "permission" in q->"Review camera, microphone, contacts, SMS and location permissions in Android Settings."
+ "phishing" in q||"link" in q->"Avoid unexpected links. Verify the sender and website before entering information."
+ "hello" in q||"hi" in q->"Hello. JARVIS offline systems are ready."
+ else->"I am offline. Try: scan apps, unknown app, permissions, phishing or emergency."}
+ line("JARVIS",a);tts.speak(a,TextToSpeech.QUEUE_FLUSH,null,"jarvis")}
+ private fun scan(){status.text="SCANNING APP PERMISSIONS..."
+ val map=mapOf("android.permission.READ_SMS" to "read SMS","android.permission.SEND_SMS" to "send SMS","android.permission.READ_CONTACTS" to "contacts","android.permission.RECORD_AUDIO" to "microphone","android.permission.CAMERA" to "camera","android.permission.ACCESS_FINE_LOCATION" to "precise location","android.permission.READ_CALL_LOG" to "call history")
+ val found=mutableListOf<String>()
+ try{val list=if(Build.VERSION.SDK_INT>=33)packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())) else {
+ @Suppress("DEPRECATION") packageManager.getInstalledPackages(PackageManager.GET_PERMISSIONS)}
+ for(p in list){val a=p.applicationInfo?:continue;if(a.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM!=0)continue
+ val perms=(p.requestedPermissions?: emptyArray()).filter{map.containsKey(it)}.mapNotNull{map[it]}.distinct()
+ if(perms.isNotEmpty())found.add(packageManager.getApplicationLabel(a).toString()+" — "+perms.joinToString(", "))}}
+ catch(_:Exception){found.add("Could not read installed apps on this device.")}
+ status.text="REVIEW COMPLETE • "+found.size+" APP(S) WITH SENSITIVE PERMISSIONS"
+ val report=if(found.isEmpty())"No listed sensitive permissions found. This does not prove the device is malware-free." else found.joinToString("\n\n")
+ AlertDialog.Builder(this).setTitle("JARVIS APP REVIEW").setMessage(report).setPositiveButton("OK",null).setNeutralButton("APP SETTINGS"){_,_->startActivity(Intent(Settings.ACTION_APPLICATION_SETTINGS))}.show()}
+ private fun settings(){val items=arrayOf("JARVIS app permissions","Android security settings","About JARVIS")
+ AlertDialog.Builder(this).setTitle("JARVIS SETTINGS").setItems(items){_,i->when(i){0->startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")));1->startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS));2->AlertDialog.Builder(this).setMessage("JARVIS is an offline helper, not a full antivirus or guaranteed emergency monitor.").setPositiveButton("OK",null).show()}}.show()}
+ private fun voice(){if(!SpeechRecognizer.isRecognitionAvailable(this)){Toast.makeText(this,"Speech recognition unavailable",Toast.LENGTH_LONG).show();return}
+ if(Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),41);return}
+ speech?.destroy();speech=SpeechRecognizer.createSpeechRecognizer(this)
+ speech?.setRecognitionListener(object:android.speech.RecognitionListener{
+ override fun onReadyForSpeech(p:Bundle?){status.text="LISTENING..."};override fun onBeginningOfSpeech(){};override fun onRmsChanged(v:Float){};override fun onBufferReceived(b:ByteArray?){};override fun onEndOfSpeech(){}
+ override fun onError(e:Int){status.text="SYSTEM READY • OFFLINE MODE"};override fun onResults(b:Bundle?){val s=b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull();if(!s.isNullOrBlank()){input.setText(s);reply()};status.text="SYSTEM READY • OFFLINE MODE"}
+ override fun onPartialResults(b:Bundle?){};override fun onEvent(t:Int,b:Bundle?){}})
+ speech?.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,Locale.getDefault()))}
+ override fun onRequestPermissionsResult(r:Int,p:Array<out String>,g:IntArray){super.onRequestPermissionsResult(r,p,g);if(r==41&&g.firstOrNull()==PackageManager.PERMISSION_GRANTED)voice()}
+ override fun onDestroy(){speech?.destroy();tts.stop();tts.shutdown();super.onDestroy()}
 }
